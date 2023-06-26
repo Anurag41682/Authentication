@@ -3,13 +3,9 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const { log } = require("console");
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
 const app = express();
-const encrypt = require("mongoose-encryption");
-
-console.log(process.env.SECRET);
-console.log(process.env.MONGO_URL);
-console.log(process.env.PORT);
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 app.set("view engine", "ejs");
@@ -34,22 +30,21 @@ const userSchema = new mongoose.Schema({
 	password: String,
 });
 
-const secret = process.env.SECRET;
-userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] });
-
 const User = mongoose.model("users", userSchema);
 
 app.post("/register", (req, res) => {
-	const newUser = new User({
-		email: req.body.username,
-		password: req.body.password,
-	});
-	newUser
-		.save()
-		.then(res.render("secrets"))
-		.catch((err) => {
-			console.log(err);
+	bcrypt.hash(req.body.password, saltRounds, function (err, hash) {
+		const newUser = new User({
+			email: req.body.username,
+			password: hash,
 		});
+		newUser
+			.save()
+			.then(res.render("secrets"))
+			.catch((err) => {
+				console.log(err);
+			});
+	});
 });
 
 app.post("/login", (req, res) => {
@@ -58,11 +53,11 @@ app.post("/login", (req, res) => {
 	User.findOne({ email: username })
 		.then((foundUser) => {
 			if (foundUser) {
-				if (foundUser.password === password) {
-					res.render("secrets");
-				} else {
-					res.send("invalid Crdentials");
-				}
+				bcrypt.compare(password, foundUser.password, (err, result) => {
+					if (result) {
+						res.render("secrets");
+					}
+				});
 			}
 		})
 		.catch((err) => {
